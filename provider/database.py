@@ -3,7 +3,7 @@ from typing import Any
 from dify_plugin import ToolProvider
 from dify_plugin.errors.tool import ToolProviderCredentialValidationError
 from tools.sql_execute import SQLExecuteTool
-from tools.db_utils import is_clickhouse_uri, parse_clickhouse_uri
+from tools.db_utils import is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
 
 
 class DatabaseProvider(ToolProvider):
@@ -13,8 +13,26 @@ class DatabaseProvider(ToolProvider):
 
         db_uri = credentials.get("db_uri")
 
+        # 对于 Vertica，使用原生验证
+        if is_vertica_uri(db_uri):
+            try:
+                import vertica_python
+
+                config = parse_vertica_uri(db_uri)
+                conn = vertica_python.connect(**config)
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT 1")
+                    cur.fetchall()
+                finally:
+                    conn.close()
+
+            except ImportError:
+                raise ToolProviderCredentialValidationError("Vertica driver (vertica-python) is not installed")
+            except Exception as e:
+                raise ToolProviderCredentialValidationError(f"Vertica connection failed: {str(e)}")
         # 对于 ClickHouse/MyScale，使用原生验证
-        if is_clickhouse_uri(db_uri):
+        elif is_clickhouse_uri(db_uri):
             try:
                 import clickhouse_connect
 

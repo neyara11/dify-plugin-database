@@ -6,7 +6,7 @@ import json
 from sqlalchemy import create_engine, text
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
-from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri
+from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
 
 
 class SQLExecuteTool(Tool):
@@ -19,8 +19,19 @@ class SQLExecuteTool(Tool):
         format = tool_parameters.get("format", "json")
         config_options = tool_parameters.get("config_options") or "{}"
 
+        # 检查是否为 Vertica 数据库
+        if is_vertica_uri(db_uri):
+            config = parse_vertica_uri(db_uri)
+
+            try:
+                extra_options = json.loads(config_options)
+                config.update(extra_options)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON format for Connect Config")
+
+            return self._handle_vertica_query(config, query, format)
         # 检查是否为 ClickHouse/MyScale 数据库
-        if is_clickhouse_uri(db_uri):
+        elif is_clickhouse_uri(db_uri):
             # 处理 ClickHouse/MyScale 连接
             config = parse_clickhouse_uri(db_uri)
 
@@ -193,6 +204,100 @@ class SQLExecuteTool(Tool):
 
         except ImportError:
             raise ValueError("ClickHouse driver (clickhouse-connect) is not installed. Please add it to requirements.txt")
+        except Exception as e:
+            yield self.create_text_message(f"Error: {str(e)}")
+
+    def _handle_vertica_query(self, config: dict, query: str, format: str) -> Generator[ToolInvokeMessage]:
+        """处理 Vertica 查询"""
+        try:
+            import vertica_python
+
+            conn = vertica_python.connect(**config)
+
+            try:
+                if re.match(r'^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\s+', query, re.IGNORECASE):
+                    cur = conn.cursor()
+                    cur.execute(query)
+                    rows = cur.fetchall()
+                    columns = [desc[0] for desc in cur.description] if cur.description else []
+
+                    if format == "json":
+                        result_data = [dict(zip(columns, row)) for row in rows]
+                        yield self.create_json_message({"result": result_data})
+                    elif format == "md":
+                        if rows:
+                            from tabulate import tabulate
+                            table = tabulate(rows, headers=columns, tablefmt="pipe")
+                            yield self.create_text_message(table)
+                        else:
+                            yield self.create_text_message("Query returned no results")
+                    elif format == "csv":
+                        import io
+                        import csv
+                        output = io.StringIO()
+                        writer = csv.writer(output)
+                        writer.writerow(columns)
+                        writer.writerows(rows)
+                        csv_data = output.getvalue()
+                        yield self.create_blob_message(
+                            csv_data.encode('utf-8'),
+                            meta={"mime_type": "text/csv", "filename": "result.csv"}
+                        )
+                    elif format == "yaml":
+                        import yaml
+                        result_data = [dict(zip(columns, row)) for row in rows]
+                        yaml_data = yaml.dump({"result": result_data}, default_flow_style=False, allow_unicode=True)
+                        yield self.create_blob_message(
+                            yaml_data.encode('utf-8'),
+                            meta={"mime_type": "text/yaml", "filename": "result.yaml"},
+                        )
+                    elif format == "xlsx":
+                        import pandas as pd
+                        df = pd.DataFrame(rows, columns=columns)
+                        import io
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df.to_excel(writer, index=False, sheet_name='Results')
+                        yield self.create_blob_message(
+                            output.getvalue(),
+                            meta={
+                                "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "filename": "result.xlsx",
+                            },
+                        )
+                    elif format == "html":
+                        html_data = "<table>\n"
+                        if columns:
+                            html_data += "<thead><tr>"
+                            for col in columns:
+                                html_data += f"<th>{col}</th>"
+                            html_data += "</tr></thead>\n"
+                        html_data += "<tbody>\n"
+                        for row in rows:
+                            html_data += "<tr>"
+                            for cell in row:
+                                html_data += f"<td>{cell if cell is not None else 'NULL'}</td>"
+                            html_data += "</tr>\n"
+                        html_data += "</tbody>\n</table>"
+                        yield self.create_blob_message(
+                            html_data.encode('utf-8'),
+                            meta={"mime_type": "text/html", "filename": "result.html"},
+                        )
+                    else:
+                        raise ValueError(f"Unsupported format: {format}")
+                else:
+                    cur = conn.cursor()
+                    cur.execute(query)
+                    conn.commit()
+                    yield self.create_text_message(
+                        "Query executed successfully."
+                    )
+
+            finally:
+                conn.close()
+
+        except ImportError:
+            raise ValueError("Vertica driver (vertica-python) is not installed. Please add it to requirements.txt")
         except Exception as e:
             yield self.create_text_message(f"Error: {str(e)}")
 

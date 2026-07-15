@@ -1,7 +1,7 @@
 ## 数据库
 
 **作者：** hjlarry  
-**版本：** 0.0.7
+**版本：** 0.0.8
 **类型：** 工具  
 **仓库：** [https://github.com/hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database)  
 **功能请求：** [issues](https://github.com/hjlarry/dify-plugin-database/issues)  
@@ -18,7 +18,7 @@
 
 ### 用法
 
-#### 1. 输入用于授权的 databaseURI。目前支持 `mysql`、`postgresql`、`sqlite`、`sqlserver`、`oracle`、`clickhouse`，示例格式如下：
+#### 1. 输入用于授权的 databaseURI。目前支持 `mysql`、`postgresql`、`sqlite`、`sqlserver`、`oracle`、`clickhouse`、`vertica`，示例格式如下：
 ```shell
 mysql+pymysql://root:123456@localhost:3306/test
 postgresql+psycopg2://postgres:123456@localhost:5432/test
@@ -27,6 +27,7 @@ mssql+pymssql://<username>:<password>@<freetds_name>/?charset=utf8
 oracle+oracledb://user:pass@hostname:port[/dbname][?service_name=<service>[&key=value&key=value...]]
 clickhouse://default:password@localhost:8123/default
 clickhouse+connect://default:password@localhost:8123/mydatabase
+vertica://dbadmin:password@localhost:5433/docker
 ```
 
 **ClickHouse/MyScale 特别说明：**
@@ -34,6 +35,12 @@ clickhouse+connect://default:password@localhost:8123/mydatabase
 - 使用 `clickhouse-connect` Python 驱动
 - 默认端口：8123（HTTP）、9000（Native TCP）
 - MyScale 是一个兼容 ClickHouse 的向量数据库，支持向量相似性搜索功能
+
+**Vertica 特别说明：**
+- 使用 `vertica-python` 纯 Python 驱动（DB-API 2.0 兼容）
+- 默认端口：5433
+- 系统目录表：`v_catalog.tables`、`v_catalog.columns`、`v_catalog.primary_keys`
+- Schema 名称区分大小写，默认 Schema 通常为 `public`
 
 > **注意：** 此插件总是在 Docker 中运行，因此 `localhost` 始终指 Docker 内部网络，请尝试使用 `host.docker.internal` 代替。
 
@@ -64,6 +71,13 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 ```
 
 ### 更新日志
+
+#### 0.0.8
+1. 新增 Vertica 数据库支持
+2. 使用 vertica-python 1.4.0+ 纯 Python 驱动（DB-API 2.0）
+3. 支持所有现有的输出格式（JSON、CSV、YAML、XLSX、HTML、Markdown）
+4. 支持通过 v_catalog 系统表获取表结构
+5. 支持 text2sql Vertica 方言
 
 #### 0.0.7
 1. 新增 ClickHouse/MyScale 数据库支持

@@ -81,6 +81,19 @@ def is_clickhouse_uri(db_uri: str) -> bool:
     return db_uri.startswith(('clickhouse://', 'clickhouse+connect://', 'myscale://', 'myscale+connect://'))
 
 
+def is_vertica_uri(db_uri: str) -> bool:
+    """
+    检查是否为 Vertica 数据库 URI
+
+    Args:
+        db_uri: 数据库 URI
+
+    Returns:
+        bool: 是否为 Vertica URI
+    """
+    return db_uri.startswith('vertica://')
+
+
 def parse_clickhouse_uri(db_uri: str) -> dict:
     """
     解析 ClickHouse/MyScale 连接字符串
@@ -170,4 +183,82 @@ def parse_clickhouse_uri(db_uri: str) -> dict:
             'username': 'default',
             'password': '',
             'database': 'default'
+        }
+
+def parse_vertica_uri(db_uri: str) -> dict:
+    """
+    解析 Vertica 连接字符串
+
+    Args:
+        db_uri: Vertica URI，格式如:
+                vertica://user:password@host:port/database
+
+    Returns:
+        dict: 包含连接参数的字典
+    """
+    try:
+        if db_uri.startswith('vertica://'):
+            db_uri = db_uri.replace('vertica://', '')
+
+        if '@' in db_uri:
+            auth_part, host_part = db_uri.split('@', 1)
+
+            if ':' in auth_part:
+                user, password = auth_part.split(':', 1)
+            else:
+                user, password = auth_part, ''
+
+            if '/' in host_part:
+                host_db_part = host_part.split('/', 1)
+                host_port = host_db_part[0]
+                database = host_db_part[1] if len(host_db_part) > 1 else ''
+            else:
+                host_port = host_part
+                database = ''
+
+            if ':' in host_port:
+                host, port = host_port.split(':', 1)
+            else:
+                host = host_port
+                port = 5433
+
+            return {
+                'host': host,
+                'port': int(port),
+                'user': user,
+                'password': password,
+                'database': database,
+                'autocommit': True,
+            }
+        else:
+            if '/' in db_uri:
+                host_db_part = db_uri.split('/', 1)
+                host_port = host_db_part[0]
+                database = host_db_part[1] if len(host_db_part) > 1 else ''
+            else:
+                host_port = db_uri
+                database = ''
+
+            if ':' in host_port:
+                host, port = host_port.split(':', 1)
+            else:
+                host = host_port
+                port = 5433
+
+            return {
+                'host': host,
+                'port': int(port),
+                'user': '',
+                'password': '',
+                'database': database,
+                'autocommit': True,
+            }
+    except Exception:
+        return {
+            'host': 'localhost',
+            'port': 5433,
+            'user': 'dbadmin',
+            'password': '',
+            'database': '',
+            'autocommit': True,
         } 

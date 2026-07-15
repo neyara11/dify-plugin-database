@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin.entities.model.message import SystemPromptMessage, UserPromptMessage
-from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri
+from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are a {dialect} expert. Your task is to generate an executable {dialect} query based on the user's question.
@@ -67,8 +67,20 @@ class QueryTool(Tool):
         if not db_uri:
             raise ValueError("Database URI is not provided.")
 
+        # 检查是否为 Vertica 数据库
+        if is_vertica_uri(db_uri):
+            config = parse_vertica_uri(db_uri)
+            config_options = tool_parameters.get("config_options") or "{}"
+            try:
+                extra_options = json.loads(config_options)
+                config.update(extra_options)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON format for Connect Config")
+
+            dialect = "vertica"
+            schema_info = self._get_vertica_schema(config)
         # 检查是否为 ClickHouse/MyScale 数据库
-        if is_clickhouse_uri(db_uri):
+        elif is_clickhouse_uri(db_uri):
             # 处理 ClickHouse/MyScale
             config = parse_clickhouse_uri(db_uri)
             config_options = tool_parameters.get("config_options") or "{}"
@@ -191,6 +203,76 @@ class QueryTool(Tool):
                     {
                         "name": "name",
                         "type": "String",
+                        "nullable": True,
+                        "default": None,
+                        "primary_key": False,
+                    }
+                ]
+            }
+
+        return schema_info
+
+    def _get_vertica_schema(self, config: dict) -> dict:
+        """获取 Vertica 表结构信息"""
+        schema_info = {}
+        try:
+            import vertica_python
+
+            conn = vertica_python.connect(**config)
+
+            try:
+                tables_query = "SELECT TABLE_NAME FROM v_catalog.tables WHERE TABLE_SCHEMA = CURRENT_SCHEMA() AND IS_SYSTEM_TABLE = false ORDER BY TABLE_NAME"
+                cur = conn.cursor()
+                cur.execute(tables_query)
+                tables_list = [row[0] for row in cur.fetchall()]
+
+                for table_name in tables_list:
+                    try:
+                        columns_query = f"""
+                        SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT,
+                               CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN true ELSE false END AS IS_PK
+                        FROM v_catalog.columns c
+                        LEFT JOIN v_catalog.primary_keys pk
+                            ON c.TABLE_SCHEMA = pk.TABLE_SCHEMA
+                            AND c.TABLE_NAME = pk.TABLE_NAME
+                            AND c.COLUMN_NAME = pk.COLUMN_NAME
+                        WHERE c.TABLE_SCHEMA = CURRENT_SCHEMA() AND c.TABLE_NAME = '{table_name}'
+                        ORDER BY c.ORDINAL_POSITION
+                        """
+                        cur.execute(columns_query)
+                        columns_result = cur.fetchall()
+
+                        schema_info[table_name] = []
+                        for row in columns_result:
+                            schema_info[table_name].append({
+                                "name": row[0],
+                                "type": str(row[1]),
+                                "nullable": row[2],
+                                "default": row[3],
+                                "primary_key": row[4] if len(row) > 4 else False,
+                            })
+
+                    except Exception as e:
+                        schema_info[table_name] = f"Error getting table schema: {str(e)}"
+
+            finally:
+                conn.close()
+
+        except ImportError:
+            raise ValueError("Vertica driver (vertica-python) is not installed")
+        except Exception as e:
+            return {
+                "example_table": [
+                    {
+                        "name": "id",
+                        "type": "INTEGER",
+                        "nullable": False,
+                        "default": None,
+                        "primary_key": True,
+                    },
+                    {
+                        "name": "name",
+                        "type": "VARCHAR",
                         "nullable": True,
                         "default": None,
                         "primary_key": False,

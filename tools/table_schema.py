@@ -5,7 +5,7 @@ import json
 from sqlalchemy import create_engine, inspect
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
-from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri
+from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
 
 
 class QueryTool(Tool):
@@ -20,8 +20,20 @@ class QueryTool(Tool):
             # sometimes the schema is empty string, it must be None
             schema = None
 
+        # 检查是否为 Vertica 数据库
+        if is_vertica_uri(db_uri):
+            config = parse_vertica_uri(db_uri)
+
+            config_options = tool_parameters.get("config_options") or "{}"
+            try:
+                extra_options = json.loads(config_options)
+                config.update(extra_options)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON format for Connect Config")
+
+            return self._get_vertica_schema(config, tables, schema)
         # 检查是否为 ClickHouse/MyScale 数据库
-        if is_clickhouse_uri(db_uri):
+        elif is_clickhouse_uri(db_uri):
             # 处理 ClickHouse/MyScale
             config = parse_clickhouse_uri(db_uri)
 
@@ -139,6 +151,88 @@ class QueryTool(Tool):
 
         except ImportError:
             raise ValueError("ClickHouse driver (clickhouse-connect) is not installed. Please add it to requirements.txt")
+        except Exception as e:
+            yield self.create_text_message(f"Error: {str(e)}")
+
+    def _get_vertica_schema(self, config: dict, tables: str, schema: str) -> Generator[ToolInvokeMessage]:
+        """获取 Vertica 表结构"""
+        try:
+            import vertica_python
+
+            conn = vertica_python.connect(**config)
+
+            try:
+                if schema:
+                    schema_filter = f"'{schema}'"
+                else:
+                    schema_filter = "CURRENT_SCHEMA()"
+
+                if not tables:
+                    tables_query = f"""
+                    SELECT TABLE_NAME FROM v_catalog.tables
+                    WHERE TABLE_SCHEMA = {schema_filter} AND IS_SYSTEM_TABLE = false
+                    ORDER BY TABLE_NAME
+                    """
+                    cur = conn.cursor()
+                    cur.execute(tables_query)
+                    tables_list = [row[0] for row in cur.fetchall()]
+                else:
+                    tables_list = [t.strip() for t in tables.split(",")]
+
+                schema_info = {}
+
+                for table_name in tables_list:
+                    try:
+                        columns_query = f"""
+                        SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+                        FROM v_catalog.columns
+                        WHERE TABLE_SCHEMA = {schema_filter} AND TABLE_NAME = '{table_name}'
+                        ORDER BY ORDINAL_POSITION
+                        """
+                        cur = conn.cursor()
+                        cur.execute(columns_query)
+                        columns_result = cur.fetchall()
+
+                        pk_query = f"""
+                        SELECT COLUMN_NAME FROM v_catalog.primary_keys
+                        WHERE TABLE_SCHEMA = {schema_filter} AND TABLE_NAME = '{table_name}'
+                        ORDER BY ORDINAL_POSITION
+                        """
+                        cur.execute(pk_query)
+                        pk_result = cur.fetchall()
+                        pk_columns = [row[0] for row in pk_result]
+
+                        table_info = {
+                            "table_name": table_name,
+                            "columns": [],
+                            "primary_keys": pk_columns,
+                            "foreign_keys": [],
+                            "indexes": [],
+                            "comment": "",
+                        }
+
+                        for row in columns_result:
+                            column_info = {
+                                "name": row[0],
+                                "type": row[1],
+                                "nullable": row[2],
+                                "default": row[3],
+                                "comment": "",
+                            }
+                            table_info["columns"].append(column_info)
+
+                        schema_info[table_name] = table_info
+
+                    except Exception as e:
+                        schema_info[table_name] = f"Error getting table schema: {str(e)}"
+
+                yield self.create_text_message(json.dumps(schema_info, ensure_ascii=False))
+
+            finally:
+                conn.close()
+
+        except ImportError:
+            raise ValueError("Vertica driver (vertica-python) is not installed. Please add it to requirements.txt")
         except Exception as e:
             yield self.create_text_message(f"Error: {str(e)}")
 

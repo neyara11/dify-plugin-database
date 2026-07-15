@@ -1,7 +1,7 @@
 ## database
 
 **Author:** hjlarry  
-**Version:** 0.0.7
+**Version:** 0.0.8
 **Type:** tool   
 **Repo:** [https://github.com/hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database)  
 **Feature Request:** [issues](https://github.com/hjlarry/dify-plugin-database/issues)  
@@ -18,7 +18,7 @@ You can get different format of data, like `json`, `csv`, `yaml`, `xlsx`, `html`
 
 ### Usage
 
-#### 1. Input a databaseURI for Authorization. Now support `mysql`, `postgresql`, `sqlite`, `sqlserver`, `oracle`, `clickhouse`, example format:
+#### 1. Input a databaseURI for Authorization. Now support `mysql`, `postgresql`, `sqlite`, `sqlserver`, `oracle`, `clickhouse`, `vertica`, example format:
 ```shell
 mysql+pymysql://root:123456@localhost:3306/test
 postgresql+psycopg2://postgres:123456@localhost:5432/test
@@ -27,6 +27,7 @@ mssql+pymssql://<username>:<password>@<freetds_name>/?charset=utf8
 oracle+oracledb://user:pass@hostname:port[/dbname][?service_name=<service>[&key=value&key=value...]]
 clickhouse://default:password@localhost:8123/default
 clickhouse+connect://default:password@localhost:8123/mydatabase
+vertica://dbadmin:password@localhost:5433/docker
 ```
 
 **ClickHouse/MyScale Notes:**
@@ -34,6 +35,12 @@ clickhouse+connect://default:password@localhost:8123/mydatabase
 - Uses `clickhouse-connect` Python driver
 - Default ports: 8123 (HTTP), 9000 (Native TCP)
 - MyScale is a ClickHouse-compatible vector database with vector similarity search capabilities
+
+**Vertica Notes:**
+- Uses `vertica-python` pure Python driver (DB-API 2.0 compatible)
+- Default port: 5433
+- System catalog tables: `v_catalog.tables`, `v_catalog.columns`, `v_catalog.primary_keys`
+- Schema name is case-sensitive. Default schema is usually `public`
 
 > **Note:**: this plugin always run in a docker, so the `localhost` always means docker internal network, try `host.docker.internal` instead.
 
@@ -65,6 +72,13 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 
 
 ### Changelog
+
+#### 0.0.8
+1. Added Vertica database support
+2. Uses vertica-python 1.4.0+ pure Python driver (DB-API 2.0)
+3. Support all existing output formats (JSON, CSV, YAML, XLSX, HTML, Markdown)
+4. Support table schema retrieval via v_catalog system tables
+5. Support text2sql with Vertica dialect
 
 #### 0.0.7
 1. Added ClickHouse/MyScale database support
