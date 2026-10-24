@@ -2,10 +2,18 @@ from collections.abc import Generator
 from typing import Any
 import json
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
-from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
+from tools.db_utils import (
+    fix_db_uri_encoding,
+    get_engine,
+    is_clickhouse_uri,
+    parse_clickhouse_uri,
+    is_vertica_uri,
+    parse_vertica_uri,
+    parse_config_options,
+)
 
 
 class QueryTool(Tool):
@@ -20,67 +28,45 @@ class QueryTool(Tool):
             # sometimes the schema is empty string, it must be None
             schema = None
 
+        config_options = parse_config_options(tool_parameters.get("config_options"))
+
         # 检查是否为 Vertica 数据库
         if is_vertica_uri(db_uri):
             config = parse_vertica_uri(db_uri)
-
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                extra_options = json.loads(config_options)
-                config.update(extra_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-
+            config.update(config_options)
             return self._get_vertica_schema(config, tables, schema)
         # 检查是否为 ClickHouse/MyScale 数据库
         elif is_clickhouse_uri(db_uri):
-            # 处理 ClickHouse/MyScale
             config = parse_clickhouse_uri(db_uri)
-
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                extra_options = json.loads(config_options)
-                config.update(extra_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-
+            config.update(config_options)
             return self._get_clickhouse_schema(config, tables, schema)
         else:
-            # 处理其他数据库类型（原有逻辑）
             db_uri = fix_db_uri_encoding(db_uri)
-
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                config_options = json.loads(config_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-            engine = create_engine(db_uri, **config_options)
-            inspector = inspect(engine)
-
-            return self._get_sqlalchemy_schema(inspector, engine, tables, schema)
+            engine = get_engine(db_uri, config_options)
+            return self._get_sqlalchemy_schema(engine, tables, schema)
 
     def _get_clickhouse_schema(self, config: dict, tables: str, schema: str) -> Generator[ToolInvokeMessage]:
         """获取 ClickHouse/MyScale 表结构"""
         try:
             import clickhouse_connect
+        except ImportError:
+            raise ValueError("ClickHouse driver (clickhouse-connect) is not installed. Please add it to requirements.txt")
 
+        schema_info = {}
+        error = None
+        try:
             client = clickhouse_connect.get_client(**config)
-
             try:
                 # 获取所有表名或使用指定的表名
                 if not tables:
-                    # 查询所有表名
                     tables_query = "SELECT name FROM system.tables WHERE database = currentDatabase()"
                     result = client.query(tables_query)
                     tables_list = [row[0] for row in result.result_rows]
                 else:
                     tables_list = [t.strip() for t in tables.split(",")]
 
-                schema_info = {}
-
                 for table_name in tables_list:
                     try:
-                        # 获取表结构信息
                         columns_query = f"""
                         SELECT
                             name,
@@ -106,7 +92,6 @@ class QueryTool(Tool):
                             "comment": ""
                         }
 
-                        # 获取表的引擎和注释
                         try:
                             table_query = f"""
                             SELECT engine, comment
@@ -121,7 +106,6 @@ class QueryTool(Tool):
                         except Exception:
                             pass
 
-                        # 处理列信息
                         for row in columns_result.result_rows:
                             column_info = {
                                 "name": row[0],
@@ -132,35 +116,39 @@ class QueryTool(Tool):
                             }
                             table_info["columns"].append(column_info)
 
-                            if row[2]:  # is_in_primary_key
+                            if row[2]:
                                 table_info["primary_keys"].append(row[0])
-                            if row[3]:  # is_in_sorting_key
+                            if row[3]:
                                 table_info["sorting_keys"].append(row[0])
-                            if row[4]:  # is_in_partition_key
+                            if row[4]:
                                 table_info["partition_keys"].append(row[0])
 
                         schema_info[table_name] = table_info
 
                     except Exception as e:
                         schema_info[table_name] = f"Error getting table schema: {str(e)}"
-
-                yield self.create_text_message(json.dumps(schema_info, ensure_ascii=False))
-
             finally:
                 client.close()
-
-        except ImportError:
-            raise ValueError("ClickHouse driver (clickhouse-connect) is not installed. Please add it to requirements.txt")
         except Exception as e:
-            yield self.create_text_message(f"Error: {str(e)}")
+            error = str(e)
+
+        if error is not None:
+            yield self.create_text_message(f"Error: {error}")
+            return
+
+        yield self.create_text_message(json.dumps(schema_info, ensure_ascii=False))
 
     def _get_vertica_schema(self, config: dict, tables: str, schema: str) -> Generator[ToolInvokeMessage]:
         """获取 Vertica 表结构"""
         try:
             import vertica_python
+        except ImportError:
+            raise ValueError("Vertica driver (vertica-python) is not installed. Please add it to requirements.txt")
 
+        schema_info = {}
+        error = None
+        try:
             conn = vertica_python.connect(**config)
-
             try:
                 if schema:
                     schema_filter = f"'{schema}'"
@@ -178,8 +166,6 @@ class QueryTool(Tool):
                     tables_list = [row[0] for row in cur.fetchall()]
                 else:
                     tables_list = [t.strip() for t in tables.split(",")]
-
-                schema_info = {}
 
                 for table_name in tables_list:
                     try:
@@ -225,23 +211,24 @@ class QueryTool(Tool):
 
                     except Exception as e:
                         schema_info[table_name] = f"Error getting table schema: {str(e)}"
-
-                yield self.create_text_message(json.dumps(schema_info, ensure_ascii=False))
-
             finally:
                 conn.close()
-
-        except ImportError:
-            raise ValueError("Vertica driver (vertica-python) is not installed. Please add it to requirements.txt")
         except Exception as e:
-            yield self.create_text_message(f"Error: {str(e)}")
+            error = str(e)
 
-    def _get_sqlalchemy_schema(self, inspector, engine, tables: str, schema: str) -> Generator[ToolInvokeMessage]:
+        if error is not None:
+            yield self.create_text_message(f"Error: {error}")
+            return
+
+        yield self.create_text_message(json.dumps(schema_info, ensure_ascii=False))
+
+    def _get_sqlalchemy_schema(self, engine, tables: str, schema: str) -> Generator[ToolInvokeMessage]:
         """获取 SQLAlchemy 支持的数据库表结构"""
-        tables = tables.split(",") if tables else inspector.get_table_names(schema=schema)
+        with engine.connect() as conn:
+            inspector = inspect(conn)
+            tables = tables.split(",") if tables else inspector.get_table_names(schema=schema)
 
-        schema_info = {}
-        with engine.connect() as _:
+            schema_info = {}
             for table_name in tables:
                 # Basic table info
                 table_info = {
@@ -251,13 +238,13 @@ class QueryTool(Tool):
                     "foreign_keys": [],
                     "indexes": []
                 }
-                
+
                 # Get table comment
                 try:
                     table_info["comment"] = inspector.get_table_comment(table_name, schema=schema).get('text', '')
                 except NotImplementedError:
                     table_info["comment"] = ""
-                
+
                 # Get foreign keys
                 try:
                     for fk in inspector.get_foreign_keys(table_name, schema=schema):
@@ -268,7 +255,7 @@ class QueryTool(Tool):
                         })
                 except NotImplementedError:
                     pass
-                
+
                 # Get indexes
                 try:
                     for idx in inspector.get_indexes(table_name, schema=schema):
@@ -279,7 +266,7 @@ class QueryTool(Tool):
                         })
                 except NotImplementedError:
                     pass
-                
+
                 # Get columns
                 try:
                     columns = inspector.get_columns(table_name, schema=schema)
@@ -293,7 +280,7 @@ class QueryTool(Tool):
                         }
                         for col in columns
                     ]
-                    
+
                     schema_info[table_name] = table_info
                 except Exception as e:
                     schema_info[table_name] = f"Error getting schema: {str(e)}"

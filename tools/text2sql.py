@@ -1,14 +1,20 @@
 from collections.abc import Generator
 from typing import Any
 import json
-import re
-from urllib.parse import quote_plus
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin.entities.model.message import SystemPromptMessage, UserPromptMessage
-from tools.db_utils import fix_db_uri_encoding, is_clickhouse_uri, parse_clickhouse_uri, is_vertica_uri, parse_vertica_uri
+from tools.db_utils import (
+    fix_db_uri_encoding,
+    get_engine,
+    is_clickhouse_uri,
+    parse_clickhouse_uri,
+    is_vertica_uri,
+    parse_vertica_uri,
+    parse_config_options,
+)
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are a {dialect} expert. Your task is to generate an executable {dialect} query based on the user's question.
@@ -67,49 +73,34 @@ class QueryTool(Tool):
         if not db_uri:
             raise ValueError("Database URI is not provided.")
 
+        config_options = parse_config_options(tool_parameters.get("config_options"))
+
         # 检查是否为 Vertica 数据库
         if is_vertica_uri(db_uri):
             config = parse_vertica_uri(db_uri)
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                extra_options = json.loads(config_options)
-                config.update(extra_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-
+            config.update(config_options)
             dialect = "vertica"
             schema_info = self._get_vertica_schema(config)
         # 检查是否为 ClickHouse/MyScale 数据库
         elif is_clickhouse_uri(db_uri):
-            # 处理 ClickHouse/MyScale
             config = parse_clickhouse_uri(db_uri)
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                extra_options = json.loads(config_options)
-                config.update(extra_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-
-            dialect = "clickhouse"  # 设置方言为 clickhouse
+            config.update(config_options)
+            dialect = "clickhouse"
             schema_info = self._get_clickhouse_schema(config)
         else:
-            # 处理其他数据库类型（原有逻辑）
             db_uri = fix_db_uri_encoding(db_uri)
-
-            config_options = tool_parameters.get("config_options") or "{}"
-            try:
-                config_options = json.loads(config_options)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for Connect Config")
-            engine = create_engine(db_uri, **config_options)
-            inspector = inspect(engine)
+            engine = get_engine(db_uri, config_options)
             dialect = engine.dialect.name
 
-            tables = tool_parameters.get("tables")
-            tables = tables.split(",") if tables else inspector.get_table_names()
+            # 表结构在 with 块内完整读出，连接确定性归还连接池，
+            # 之后的 LLM 调用不持有任何数据库连接
+            with engine.connect() as conn:
+                inspector = inspect(conn)
 
-            schema_info = {}
-            with engine.connect() as _:
+                tables = tool_parameters.get("tables")
+                tables = tables.split(",") if tables else inspector.get_table_names()
+
+                schema_info = {}
                 for table_name in tables:
                     try:
                         columns = inspector.get_columns(table_name)
@@ -125,6 +116,7 @@ class QueryTool(Tool):
                         ]
                     except Exception as e:
                         schema_info[table_name] = f"Error getting schema: {str(e)}"
+
         prompt_messages = [
             SystemPromptMessage(content=SYSTEM_PROMPT_TEMPLATE.format(dialect=dialect)),
             UserPromptMessage(

@@ -165,7 +165,13 @@ cython_debug/
 .idea/
 .vscode/
 .git/
+.github/
+.kilo/
+.gitignore
+*.difypkg
 test.db
 csv.db
 .DS_Store
 _assets/contact.jpg
+FAQ.md
+GUIDE.md

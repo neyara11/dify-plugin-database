@@ -169,3 +169,9 @@ cython_debug/
 
 .DS_Store
 csv.db
+
+# Dify plugin build artifacts
+*.difypkg
+
+# Kilo
+.kilo/

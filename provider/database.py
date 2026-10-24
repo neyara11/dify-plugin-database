@@ -44,8 +44,10 @@ class DatabaseProvider(ToolProvider):
 
                 # 尝试建立连接并执行测试查询
                 client = clickhouse_connect.get_client(**config)
-                client.command("SELECT 1")
-                client.close()
+                try:
+                    client.command("SELECT 1")
+                finally:
+                    client.close()
 
             except ImportError:
                 raise ToolProviderCredentialValidationError("ClickHouse driver (clickhouse-connect) is not installed")
