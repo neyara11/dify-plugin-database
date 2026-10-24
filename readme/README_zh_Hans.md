@@ -117,6 +117,15 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 
 
 
+### 已知限制
+
+- Dify 1.16 的 Agent 节点不会保存 `text2sql` 的 `model-selector` 参数（Dify 前端问题；Workflow 节点正常）：请在 Workflow 中使用 `text2sql`，或在 Agent 中改用 `sql_execute`。
+- 不支持 Oracle 12.1 以下版本（python-oracledb thin 模式要求 12.1+）。
+- 每次调用只支持一条 SQL 语句，不支持多结果集。
+- 没有单条查询超时限制，受 Dify 插件执行超时约束。
+- `sqlite:///relative.db` 相对于插件工作目录解析，建议使用绝对路径。
+- JSON 输出中的 `NaN`/`Infinity` 返回为空字符串。
+
 ### 支持
 
 问题和 bug 反馈: https://github.com/neyara11/dify-plugin-database/issues

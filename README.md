@@ -133,6 +133,15 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 6. fix sql query being converted to lowercase [issue](https://github.com/hjlarry/dify-plugin-database/issues/2)
 
 
+### Known limitations
+
+- **Agent nodes + `text2sql` (Dify 1.16)**: the `model-selector` parameter is not persisted from the Agent tool settings (Dify UI issue; the workflow node works fine). Use `text2sql` in a Workflow node, or call `sql_execute` from an Agent.
+- Oracle below 12.1 is not supported (python-oracledb thin mode requires 12.1+).
+- One SQL statement per call; multiple result sets are not supported.
+- No per-query timeout — long-running queries are bounded by the Dify plugin execution timeout.
+- `sqlite:///relative.db` resolves against the plugin working directory; use an absolute path.
+- `NaN`/`Infinity` values are returned as empty strings in JSON output.
+
 ### Support
 
 For questions and bug reports, please open an issue: https://github.com/neyara11/dify-plugin-database/issues

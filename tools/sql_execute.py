@@ -1,8 +1,8 @@
 from collections.abc import Generator
 from typing import Any
+import math
 import re
 
-from sqlalchemy import text
 from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
 from tools.db_utils import (
@@ -14,6 +14,17 @@ from tools.db_utils import (
     parse_vertica_uri,
     parse_config_options,
 )
+
+
+def _normalize_value(value):
+    """Replace NaN/Infinity (not valid JSON) with an empty string."""
+    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        return ""
+    return value
+
+
+def _normalize_row(row):
+    return tuple(_normalize_value(cell) for cell in row)
 
 
 class SQLExecuteTool(Tool):
@@ -60,7 +71,7 @@ class SQLExecuteTool(Tool):
                     is_query = True
                     result = client.query(query)
                     columns = list(result.column_names)
-                    rows = [tuple(row) for row in result.result_rows]
+                    rows = [_normalize_row(row) for row in result.result_rows]
                 else:
                     command_result = client.command(query)
                     affected_rows = command_result if isinstance(command_result, int) else 0
@@ -203,7 +214,7 @@ class SQLExecuteTool(Tool):
                 cur = conn.cursor()
                 cur.execute(query)
                 if is_query:
-                    rows = cur.fetchall()
+                    rows = [_normalize_row(row) for row in cur.fetchall()]
                     columns = [desc[0] for desc in cur.description] if cur.description else []
                 else:
                     conn.commit()
@@ -291,8 +302,8 @@ class SQLExecuteTool(Tool):
         """处理 SQLAlchemy 支持的数据库查询"""
         if re.match(r'^\s*(SELECT|WITH)\s+', query, re.IGNORECASE):
             with engine.connect() as conn:
-                result = conn.execute(text(query))
-                rows = result.fetchall()
+                result = conn.exec_driver_sql(query)
+                rows = [_normalize_row(row) for row in result.fetchall()]
                 columns = list(result.keys())
 
             if format == "json":
@@ -362,7 +373,7 @@ class SQLExecuteTool(Tool):
         else:
             try:
                 with engine.begin() as conn:
-                    result = conn.execute(text(query))
+                    result = conn.exec_driver_sql(query)
                     affected_rows = result.rowcount
             except Exception as e:
                 yield self.create_text_message(f"Error: {str(e)}")
