@@ -1,10 +1,12 @@
 ## 数据库
 
-**作者：** hjlarry  
-**版本：** 0.0.8
+**作者：** neyara11  
+**版本：** 0.1.0
 **类型：** 工具  
-**仓库：** [https://github.com/hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database)  
-**功能请求：** [issues](https://github.com/hjlarry/dify-plugin-database/issues)  
+**仓库：** [https://github.com/neyara11/dify-plugin-database](https://github.com/neyara11/dify-plugin-database)  
+**功能请求：** [issues](https://github.com/neyara11/dify-plugin-database/issues)  
+
+本项目是 [hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database) 的分支（原作者未发布许可证文件）：修复了数据库连接泄漏问题，新增 Vertica 支持，合并了社区的 ClickHouse/MyScale 支持与数据库 URI 特殊字符编码修复。原始代码的版权仍归原作者所有，详见 [LICENSE](../LICENSE)。
 **FAQ：** [FAQ](FAQ.md)  
 
 ### 请注意！
@@ -114,5 +116,7 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 6. 修复 SQL 查询被转换为小写的问题 [issue](https://github.com/hjlarry/dify-plugin-database/issues/2)
 
 
-### 加群
-![1](_assets/contact.jpg)
+
+### 支持
+
+问题和 bug 反馈: https://github.com/neyara11/dify-plugin-database/issues

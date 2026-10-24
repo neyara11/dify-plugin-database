@@ -1,16 +1,19 @@
-version: 0.0.9
+version: 0.1.0
 type: plugin
-author: hjlarry
-name: database
+author: neyara11
+name: database_plus
 label:
-  en_US: database
-  ja_JP: database
-  zh_Hans: database
-  pt_BR: database
+  en_US: Database Plus
+  ja_JP: Database Plus
+  zh_Hans: Database Plus
+  pt_BR: Database Plus
 description:
-  en_US: This tool is used to execute SQL and text2sql in an existing database.
+  en_US: "Execute SQL and text2sql across MySQL, PostgreSQL, SQLite, SQL Server, Oracle, ClickHouse, MyScale and Vertica. Extended fork of hjlarry/dify-plugin-database with connection-leak fixes and more databases."
   zh_Hans: 此工具可以用来连接现有数据库，并执行SQL语句和自然语言转SQL。
 icon: icon.svg
+repo: https://github.com/neyara11/dify-plugin-database
+contact: neyara@mail.ru
+privacy: PRIVACY.md
 resource:
   memory: 268435456
   permission:
@@ -35,5 +38,6 @@ meta:
     language: python
     version: "3.12"
     entrypoint: main
+  minimum_dify_version: "1.0.0"
 created_at: 2024-12-24T14:34:18.7972424+08:00
 verified: false

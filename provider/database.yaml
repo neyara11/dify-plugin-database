@@ -1,8 +1,8 @@
 identity:
-  author: hjlarry
-  name: database
+  author: neyara11
+  name: database_plus
   label:
-    en_US: Database
+    en_US: Database Plus
   description:
     en_US: This tool is used to execute SQL in an existing database.
     zh_Hans: 此工具用于在已存在的数据库中执行 SQL 查询。

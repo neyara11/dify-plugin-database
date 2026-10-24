@@ -1,14 +1,31 @@
-## database
+## Database Plus
 
-**Author:** hjlarry  
-**Version:** 0.0.8
+**Author:** neyara11  
+**Version:** 0.1.0
 **Type:** tool   
-**Repo:** [https://github.com/hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database)  
-**Feature Request:** [issues](https://github.com/hjlarry/dify-plugin-database/issues)  
-**中文文档** [README_CN.md](https://github.com/hjlarry/dify-plugin-database/blob/main/README_CN.md)
+**Repo:** [https://github.com/neyara11/dify-plugin-database](https://github.com/neyara11/dify-plugin-database)  
+**Feature Request:** [issues](https://github.com/neyara11/dify-plugin-database/issues)  
+**Chinese documentation:** [README_zh_Hans.md](readme/README_zh_Hans.md)
+
+### Provenance
+
+This plugin is a fork of [hjlarry/dify-plugin-database](https://github.com/hjlarry/dify-plugin-database) (the original authors published no license file). Changes in this fork:
+
+- fixed database connection leaks ([#44](https://github.com/hjlarry/dify-plugin-database/issues/44), [#84](https://github.com/hjlarry/dify-plugin-database/issues/84), [#107](https://github.com/hjlarry/dify-plugin-database/issues/107), [#121](https://github.com/hjlarry/dify-plugin-database/issues/121))
+- Vertica support (native `vertica-python` driver)
+- ClickHouse/MyScale support and DB URI special-character encoding fix (community PRs merged into this fork)
+- pinned dependencies (including explicit `openpyxl` required for `xlsx` output), Marketplace packaging
+
+Copyright for the original code remains with its authors (hjlarry); this repository claims no rights over it — see [LICENSE](LICENSE).
 
 ### Be Carefull!
 **The sql_execute tool can run any SQL query; for enhanced security, always use a read-only database account.**
+
+### Setup
+
+1. Install the plugin from the Dify Marketplace (or upload the `.difypkg` from [Releases](https://github.com/neyara11/dify-plugin-database/releases)).
+2. In the tool settings, configure the **Database URI** credential, e.g. `mysql+pymysql://<user>:<password>@<host>:<port>/<database>` — the connection requirements for each supported database are listed below. Prefer a read-only database account.
+3. Alternatively pass `db_uri` per tool call to work with multiple databases.
 
 ### Description
 
@@ -116,5 +133,6 @@ curl -X POST 'https://daemon-plugin.dify.dev/o3wvwZfYFLU5iGopr5CxYmGaM5mWV7xf/sq
 6. fix sql query being converted to lowercase [issue](https://github.com/hjlarry/dify-plugin-database/issues/2)
 
 
-### Contact
-![1](_assets/contact.jpg)
+### Support
+
+For questions and bug reports, please open an issue: https://github.com/neyara11/dify-plugin-database/issues

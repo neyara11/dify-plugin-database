@@ -175,3 +175,5 @@ csv.db
 _assets/contact.jpg
 FAQ.md
 GUIDE.md
+.difyignore
+.env.example
